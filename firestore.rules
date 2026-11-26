@@ -1,0 +1,144 @@
+rules_version = '2';
+// Règles de sécurité de l'outil BENIN TOURS (reprise des 29 règles de la version Claude).
+// Niveaux : 4 propriétaire (DAF), 3 Éditeur, 2 Contributeur, 1 Lecteur, 0 aucun accès.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function cfgPath() { return /databases/$(database)/documents/acces/config; }
+    function lvl() {
+      let c = get(cfgPath()).data;
+      let n = c.membres.get(request.auth.uid, "");
+      return request.auth == null ? 0 : (c.proprietaire == request.auth.uid ? 4 : (n == "admin" ? 3 : (n == "interact" ? 2 : (n == "view" ? 1 : 0))));
+    }
+    function niv(x) { return request.auth != null && exists(cfgPath()) && lvl() >= x; }
+    match /acces/config {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.proprietaire == request.auth.uid;
+      allow update: if niv(4) && request.resource.data.proprietaire == resource.data.proprietaire;
+      allow delete: if false;
+    }
+    match /profils/{uid} {
+      allow read: if niv(1) || (request.auth != null && request.auth.uid == uid);
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /personnel/{id} {
+      allow read: if niv(4);
+      allow write: if niv(4);
+    }
+    match /paies/{id} {
+      allow read: if niv(4);
+      allow write: if niv(4);
+    }
+    match /agents/{id} {
+      allow read: if niv(1);
+      allow write: if niv(4);
+    }
+    match /parametres/{id} {
+      allow read: if niv(1);
+      allow write: if niv(4);
+    }
+    match /clotures/{id} {
+      allow read: if niv(1);
+      allow write: if niv(4);
+    }
+    match /utilisateurs/{uid} {
+      allow read: if niv(1);
+      allow write: if niv(4) || (niv(2) && request.auth.uid == uid);
+    }
+    match /audit/{id} {
+      allow read: if niv(3);
+      allow write: if niv(3);
+    }
+    match /sauvegardes/{id} {
+      allow read: if niv(3);
+      allow write: if niv(4);
+    }
+    match /conges/{id} {
+      allow read: if niv(3);
+      allow write: if niv(3);
+    }
+    match /pieces/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /engagements/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /contrats/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /ordonnances/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /bordereaux/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /missions/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /operations/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /ressources/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /budgetsrc/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /budgetmods/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /analytique/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /tiers/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /comptes/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /lettrages/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /immobilisations/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /fichesimmo/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /rapprochements/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /articles/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /mvtstock/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /factures/{id} {
+      allow read: if niv(1);
+      allow write: if niv(3);
+    }
+    match /referentiel/{id} {
+      allow read: if niv(1);
+      allow write: if niv(4);
+    }
+  }
+}
