@@ -289,14 +289,14 @@ function subscribe(){
     db.collection("missions").limit(1000).onSnapshot(s=>{S.mis=s.docs.map(d=>({id:d.id,...d.data()}));render();},err);
     db.collection("analytique").limit(1000).onSnapshot(s=>{S.ana=s.docs.map(d=>({id:d.id,...d.data()}));render();},err);
     db.collection("comptes").limit(1000).onSnapshot(s=>{S.planX=s.docs.map(d=>({id:d.id,...d.data()}));render();},err);
-    if(S.isOwner){db.collection("personnel").limit(1000).onSnapshot(s=>{S.pers=s.docs.map(d=>({id:d.id,...d.data()}));S.persOk=true;agSync();render();},()=>{});}
-    S.rawDb.collection("agents").limit(1000).onSnapshot(s=>{S.agents=s.docs.map(d=>({id:d.id,...d.data()}));S.agOk=true;if(!S.isOwner)S.pers=S.agents;else agSync();render();},()=>{});
+    db.collection("personnel").limit(1000).onSnapshot(s=>{S.pers=s.docs.map(d=>({id:d.id,...d.data()}));S.persOk=true;agSync();render();},()=>{});
+    S.rawDb.collection("agents").limit(1000).onSnapshot(s=>{S.agents=s.docs.map(d=>({id:d.id,...d.data()}));S.agOk=true;if(!S.isOwner){if(!S.persOk)S.pers=S.agents;}else agSync();render();},()=>{});
     db.collection("immobilisations").limit(1000).onSnapshot(s=>{S.immo=s.docs.map(d=>({id:d.id,...d.data()}));render();},()=>{});
     db.collection("articles").limit(1000).onSnapshot(s=>{S.art=s.docs.map(d=>({id:d.id,...d.data()}));render();},()=>{});
     db.collection("mvtstock").limit(3000).onSnapshot(s=>{S.mst=s.docs.map(d=>({id:d.id,...d.data()}));render();},()=>{});
     db.collection("fichesimmo").limit(1000).onSnapshot(s=>{S.fimmo=s.docs.map(d=>({id:d.id,...d.data()}));render();},()=>{});
     db.collection("conges").limit(1000).onSnapshot(s=>{S.cg=s.docs.map(d=>({id:d.id,...d.data()}));render();},()=>{});
-    if(S.isOwner)db.collection("paies").limit(500).onSnapshot(s=>{S.paies=s.docs.map(d=>({id:d.id,...d.data()}));render();},()=>{});
+    db.collection("paies").limit(500).onSnapshot(s=>{S.paies=s.docs.map(d=>({id:d.id,...d.data()}));render();},()=>{});
     db.collection("factures").limit(3000).onSnapshot(s=>{S.fact=s.docs.map(d=>({id:d.id,...d.data()}));render();},()=>{});
     db.collection("contrats").limit(1000).onSnapshot(s=>{S.ctr=s.docs.map(d=>({id:d.id,...d.data()}));render();},err);
     db.collection("engagements").where("contrat",">","").limit(1000).onSnapshot(s=>{S.engC=s.docs.map(d=>({id:d.id,...d.data()}));render();},()=>{});
@@ -1363,7 +1363,7 @@ const PERMS=[
  ["rappro","Saisir le rapprochement bancaire",["compta","daf"]],
  ["rapproVal","Valider ou rouvrir un rapprochement",["ac","daf"]],
  ["personnel","Gérer le registre du personnel",["daf"]],
- ["paiePrep","Préparer la paie du mois",["daf"]],
+ ["paiePrep","Préparer la paie du mois",["compta","daf"]],
  ["paieVal","Valider ou rouvrir la paie",["daf"]],
  ["conges","Saisir les demandes de congé",["rh","daf"]],
  ["congesVal","Approuver, refuser ou annuler un congé",["daf"]],
@@ -1372,7 +1372,7 @@ const OWNER_ONLY="Réservé au propriétaire de l'outil";
 function rolesDoc(){return (S.param||[]).find(p=>p.id==="roles")||{};}
 function myRoles(){const m=(rolesDoc().membres||{})[S.uid];if(m&&Array.isArray(m.roles))return m.roles;return S.isOwner?["daf"]:[];}
 function permRoles(p){const R=rolesDoc(),d=PERMS.find(x=>x[0]===p);return R.perms&&Array.isArray(R.perms[p])?R.perms[p]:(d?d[2]:[]);}
-function can(p){if(!S.db)return false;if(p==="param"||p==="cloture"||p==="sauvegarde"||p==="restauration"||p==="personnel"||p==="paiePrep"||p==="paieVal")return !!S.isOwner;if(!S.isOwner&&!S.canEdit)return false;const r=myRoles();return permRoles(p).some(x=>r.includes(x));}
+function can(p){if(!S.db)return false;if(p==="param"||p==="cloture"||p==="sauvegarde"||p==="restauration"||p==="personnel"||p==="paieVal")return !!S.isOwner;if(!S.isOwner&&!S.canEdit)return false;const r=myRoles();return permRoles(p).some(x=>r.includes(x));}
 const strictSep=()=>rolesDoc().strict!==false;
 /* séparation effective : seulement si une autre personne détient la permission */
 const sepOn=p=>strictSep()&&Object.entries(rolesDoc().membres||{}).some(([u,m])=>u!==S.uid&&(m.roles||[]).some(x=>permRoles(p).includes(x)));
@@ -1384,13 +1384,14 @@ function ordGuard(op,id,data){const b=memDoc("ordonnances",id);if(!b||b.reprise)
   if(data&&data.statut==="Signée"&&b.statut!=="Signée"){if(!b.visa&&!data.visa)throw {code:"visa",message:"L'ordonnance doit être visée par l'agent comptable avant la signature"};if(sepOn("ordSign")&&b.visa&&b.visa.par===S.uid)throw {code:"sep",message:"Séparation des tâches : la personne qui a visé l'ordonnance ne peut pas enregistrer sa signature"};if(!can("ordSign"))throw {code:"role",message:"Seul le DAF peut enregistrer la signature"};if(sepOn("ordSign")&&b.creePar===S.uid)throw {code:"sep",message:"Séparation des tâches : la personne qui a préparé l'ordonnance ne peut pas enregistrer sa signature"};if(!data.signeAtteste)throw {code:"att",message:"Attestation de signature requise"};}
   if(data&&data.statut==="Émise"&&b.statut!=="Émise"&&sepOn("ordEmit")&&b.signePar&&b.signePar===S.uid)throw {code:"sep",message:"Séparation des tâches : le paiement doit être émis par une autre personne que celle qui a enregistré la signature"};}
 const roleLib=r=>(ROLES.find(x=>x[0]===r)||[,r])[1];
-const permLib=p=>p==="param"||p==="cloture"||p==="sauvegarde"||p==="personnel"||p==="paiePrep"||p==="paieVal"?OWNER_ONLY:((PERMS.find(x=>x[0]===p)||[,p])[1]);
-const rolesOf=p=>p==="param"||p==="cloture"||p==="sauvegarde"||p==="personnel"||p==="paiePrep"||p==="paieVal"?"propriétaire de l'outil":(permRoles(p).map(roleLib).join(", ")||"aucun rôle");
+const permLib=p=>p==="param"||p==="cloture"||p==="sauvegarde"||p==="personnel"||p==="paieVal"?OWNER_ONLY:((PERMS.find(x=>x[0]===p)||[,p])[1]);
+const rolesOf=p=>p==="param"||p==="cloture"||p==="sauvegarde"||p==="personnel"||p==="paieVal"?"propriétaire de l'outil":(permRoles(p).map(roleLib).join(", ")||"aucun rôle");
 const VIEW_PERM={facturation:["facturer","encaisser","factAnn","saisie"],saisie:["saisie","valider"],tiers:["tiers"],analytique:["budgetMod"],budget:["budgetMod"],engagements:["engager","suppEng"],contrats:["contrats","suppEng"],financement:["budgetMod"],operations:["operations","avisCG","prixDG"],missions:["missions","misAuth"],bordereaux:["ordPrep"],ordonnances:["ordPrep","ordSign","ordEmit","ordAnn"],rapprochement:["rappro","rapproVal"],reprise:["param"],exports:["param","sauvegarde"],plan:["param"],cloture:["cloture"],roles:["param"],lettrage:["lettrage"],immo:["immo","immoSortie","saisie"],etats:["param","saisie","valider"],tableau:["saisie","engager","ordPrep"]};
-function viewCan(){if(S.view==="paie"){const t=S.paieTab||"paie";if(!S.isOwner&&t!=="conges")return false;return t==="personnel"?can("personnel"):t==="param"?can("param"):t==="conges"?(can("conges")||can("congesVal")):(can("paiePrep")||can("paieVal")||can("ordPrep")||can("saisie"));}const P=VIEW_PERM[S.view];return P?P.some(can):false;}
+function viewCan(){if(S.view==="paie"){const t=S.paieTab||"paie";if(!S.isOwner&&t!=="conges"&&!(t==="paie"&&can("paiePrep")))return false;return t==="personnel"?can("personnel"):t==="param"?can("param"):t==="conges"?(can("conges")||can("congesVal")):(can("paiePrep")||can("paieVal")||can("ordPrep")||can("saisie"));}const P=VIEW_PERM[S.view];return P?P.some(can):false;}
 const COL_PERM={factures:["facturer","encaisser","factAnn"],articles:["immo"],mvtstock:["immo"],pieces:["saisie","valider"],engagements:["engager","suppEng","ordPrep","ordEmit","contrats","missions","saisie"],contrats:["contrats","suppEng","engager","ordPrep","ordEmit"],ordonnances:["ordPrep","ordSign","ordEmit","ordAnn"],bordereaux:["ordPrep"],missions:["missions","misAuth","ordPrep","ordEmit"],operations:["operations","prixDG","avisCG"],personnel:["personnel","conges"],paies:["paiePrep","paieVal"],conges:["conges","congesVal"],lettrages:["lettrage"],immobilisations:["immo","immoSortie"],fichesimmo:["immo"],rapprochements:["rappro","rapproVal"],tiers:["tiers","saisie","ordPrep","missions","contrats"],budgetmods:["budgetMod"],ressources:["budgetMod"],budgetsrc:["budgetMod"],analytique:["budgetMod","operations","param"],comptes:["param","saisie"],parametres:["param"],clotures:["cloture"],sauvegardes:["sauvegarde"]};
 function colGuard(name,op,id,data){const P=COL_PERM[name];if(P&&!P.some(can))throw {code:"role",message:"Action non autorisée pour votre rôle"};
   if(name==="engagements"&&op==="delete"&&!can("suppEng"))throw {code:"role",message:"La suppression d'un engagement doit être validée par le DAF"};
+  if(name==="paies"&&!can("paieVal")){const b=memDoc("paies",id);if((data&&data.statut==="Validée")||(b&&b.statut==="Validée")||op==="delete")throw {code:"role",message:"La validation de la paie est réservée au DAF"};}
   if(name==="pieces")pieceGuard(op,id,data);if(name==="ordonnances")ordGuard(op,id,data);if(name==="bordereaux")bpGuard(op,id,data);if(name==="factures")factGuard(op,id,data);sodGuard(name,id,data);}
 /* séparation des tâches : celui qui prépare ne valide pas */
 const SOD=[
@@ -2952,9 +2953,9 @@ function paieEcr(ym){const P=paieP(),L=paieLines(ym),g={},lib=`${String(ym.slice
   const D=Object.values(g).map(l=>({...l,debit:l.debit?String(l.debit):"",credit:l.credit?String(l.credit):""}));
   return D.concat(C.filter(c=>c[2]).map(c=>({compte:c[0],libelle:c[1],debit:"",credit:String(c[2]),codeBudget:"",section:""})));}
 /* vues */
-function vPaie(){if(!S.isOwner)S.paieTab="conges";const tab=S.paieTab||"paie",T=S.isOwner?[["paie","Paie du mois"],["personnel",`Personnel (${S.pers.length})`],["conges","Congés"],["param","Paramètres de paie"]]:[["conges","Congés"]];
+function vPaie(){const pp=!S.isOwner&&can("paiePrep");if(!S.isOwner&&!(pp&&(S.paieTab||"paie")==="paie"))S.paieTab="conges";const tab=S.paieTab||"paie",T=S.isOwner?[["paie","Paie du mois"],["personnel",`Personnel (${S.pers.length})`],["conges","Congés"],["param","Paramètres de paie"]]:pp?[["paie","Paie du mois"],["conges","Congés"]]:[["conges","Congés"]];
   return head("Personnel et paie","Registre du personnel, calcul mensuel (salaire brut reconstitué à partir du net contractuel, CNSS, ITS, VPS), bulletins, état de paie, écriture comptable et ordonnances de paiement.")+
-  (S.isOwner?"":`<div class="msg warn" style="margin-bottom:12px">Les salaires, la paie, les numéros CNSS et IFU et les coordonnées bancaires des agents sont réservés au DAF, propriétaire de l'outil : le serveur ne les transmet à aucun autre utilisateur. Vous voyez ici les congés et le registre des agents (nom, poste, direction, dates d'entrée et de sortie).</div>`)+
+  (S.isOwner?"":pp?`<div class="msg" style="margin-bottom:12px">Vous préparez la paie du mois (éléments variables, contrôles, bulletins). Sa validation et le registre du personnel restent réservés au DAF.</div>`:`<div class="msg warn" style="margin-bottom:12px">Les salaires, la paie, les numéros CNSS et IFU et les coordonnées bancaires des agents sont réservés au DAF, propriétaire de l'outil : le serveur ne les transmet à aucun autre utilisateur. Vous voyez ici les congés et le registre des agents (nom, poste, direction, dates d'entrée et de sortie).</div>`)+
   `<div class="tabs">${T.map(([k,l])=>`<button data-ptab="${k}" class="${k===tab?"on":""}">${esc(l)}</button>`).join("")}</div>`+
   (tab==="personnel"?vPers():tab==="param"?vPaieParam():tab==="conges"?vConges():vPaieMois());}
 function paiePrintPanel(){const d=S.ppdoc;if(!d)return "";const ym=S.paieM,L=paieLines(ym);let t,h,o="portrait";
