@@ -58,14 +58,28 @@ async function afterLogin(u){
   try{const p=await db.collection("profils").doc(u.uid).get();const nom=(p.exists&&p.data().nom)||u.displayName||u.email;
     await db.collection("profils").doc(u.uid).set({nom,email:u.email,vu:new Date().toISOString()},{merge:true});}catch(e){}
   /* configuration des accès : créée par le premier utilisateur (le DAF) */
-  try{const c=await db.collection("acces").doc("config").get();
-    if(!c.exists){if(confirm("Première ouverture de l'outil : vous allez en devenir le propriétaire (DAF), seul habilité à gérer les accès et la paie. Continuer ?")){await db.collection("acces").doc("config").set({proprietaire:u.uid,membres:{},creeLe:new Date().toISOString()});acces={proprietaire:u.uid,membres:{}};}}
-    else acces=c.data();}catch(e){}
+  let c;
+  try{c=await db.collection("acces").doc("config").get();}
+  catch(e){return blocage(u,"Lecture de la configuration des accès refusée par Firebase ("+(e.code||e.message||"erreur")+"). Vérifiez que les règles du fichier firestore.rules sont publiées dans la console Firebase (Firestore > Règles), puis rechargez la page.");}
+  if(!c.exists){
+    /* première ouverture : pas de boîte confirm(), que certains navigateurs intégrés bloquent sans rien afficher */
+    const ok=await premiereOuverture(u);if(!ok)return;
+    try{await db.collection("acces").doc("config").set({proprietaire:u.uid,membres:{},creeLe:new Date().toISOString()});acces={proprietaire:u.uid,membres:{}};document.getElementById("bt-login")?.remove();}
+    catch(e){return blocage(u,"Création du propriétaire refusée par Firebase ("+(e.code||e.message||"erreur")+"). Vérifiez que les règles du fichier firestore.rules sont publiées (Firestore > Règles), puis rechargez la page.");}
+  }else acces=c.data();
   db.collection("acces").doc("config").onSnapshot(s=>{const prev=niveau(u.uid);acces=s.exists?s.data():null;if(niveau(u.uid)!==prev)location.reload();},()=>{});
   if(!niveau(u.uid)){document.body.appendChild(el(`<div id="bt-login"><div class="box"><h1>Accès en attente</h1><p>Votre compte (${esc(u.email)}) est bien connecté, mais le DAF ne vous a pas encore donné accès à l'outil. Demandez-lui de vous l'ouvrir dans « Accès à l'outil » ; la page se rechargera d'elle-même.</p><button type="button" id="bt-out2">Se déconnecter</button></div></div>`));
     document.getElementById("bt-out2").addEventListener("click",()=>auth.signOut().then(()=>location.reload()));return;}
   resolveAuth(true);sideButtons();
 }
+function blocage(u,msg){const o=document.getElementById("bt-login");if(o)o.remove();
+  document.body.appendChild(el(`<div id="bt-login"><div class="box"><h1>Connexion impossible</h1><p>Compte : ${esc(u.email)}</p><div class="err">${esc(msg)}</div><button type="button" id="bt-out3">Se déconnecter</button></div></div>`));
+  document.getElementById("bt-out3").addEventListener("click",()=>auth.signOut().then(()=>location.reload()));}
+function premiereOuverture(u){return new Promise(res=>{const o0=document.getElementById("bt-login");if(o0)o0.remove();
+  const o=el(`<div id="bt-login"><div class="box"><h1>Première ouverture de l'outil</h1><p>Aucun propriétaire n'est encore défini. En continuant, le compte <b>${esc(u.email)}</b> devient le propriétaire (DAF) de l'outil, seul habilité à gérer les accès, la paie, la sauvegarde et la restauration. Ce choix est définitif.</p><button type="button" id="bt-own">Devenir propriétaire (DAF)</button><button type="button" class="lnk" id="bt-own-no">Ce n'est pas moi : se déconnecter</button></div></div>`);
+  document.body.appendChild(o);
+  o.querySelector("#bt-own").addEventListener("click",e=>{e.target.disabled=true;res(true);});
+  o.querySelector("#bt-own-no").addEventListener("click",()=>{res(false);auth.signOut().then(()=>location.reload());});});}
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 function sideButtons(){
