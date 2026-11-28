@@ -123,10 +123,28 @@ const downloadsApi={save:async({filename,data})=>{const b=data instanceof Blob?d
 
 window.claude={use:async name=>{await authReady;if(name==="db")return fs;if(name==="user")return userApi;if(name==="downloads")return downloadsApi;return null;}};
 
+/* Firestore refuse les tableaux imbriqués (ex. barème ITS [[seuil,taux],…]) que la version Claude acceptait.
+   On les enveloppe à l'écriture ({__tab:[…]}) et on les rétablit à la lecture, de façon transparente pour l'outil. */
+const TAB="__tab";
+const plain=o=>o!==null&&typeof o==="object"&&(Object.getPrototypeOf(o)===Object.prototype||Object.getPrototypeOf(o)===null);
+function enc(v,inArr){if(Array.isArray(v)){const a=v.map(x=>enc(x,true));return inArr?{[TAB]:a}:a;}
+  if(plain(v)){const o={};for(const k of Object.keys(v))o[k]=enc(v[k],false);return o;}return v;}
+function dec(v){if(Array.isArray(v))return v.map(dec);
+  if(plain(v)){const ks=Object.keys(v);if(ks.length===1&&ks[0]===TAB&&Array.isArray(v[TAB]))return v[TAB].map(dec);const o={};for(const k of ks)o[k]=dec(v[k]);return o;}return v;}
+function patchNestedArrays(){const F=firebase.firestore;if(!F||F.__btTab)return;F.__btTab=true;
+  const DR=F.DocumentReference&&F.DocumentReference.prototype,CR=F.CollectionReference&&F.CollectionReference.prototype;
+  if(DR){const set=DR.set,upd=DR.update;
+    DR.set=function(d,...o){return set.call(this,enc(d,false),...o);};
+    DR.update=function(a,...r){return typeof a==="string"||!plain(a)?upd.call(this,a,...r.map((x,i)=>i%2===0?enc(x,false):x)):upd.call(this,enc(a,false),...r);};}
+  if(CR){const add=CR.add;CR.add=function(d){return add.call(this,enc(d,false));};}
+  for(const C of [F.DocumentSnapshot,F.QueryDocumentSnapshot]){const P=C&&C.prototype;if(!P||!Object.prototype.hasOwnProperty.call(P,"data")&&P!==(F.DocumentSnapshot&&F.DocumentSnapshot.prototype))continue;
+    const data=P.data;if(data.__btTab)continue;const w=function(...a){const d=data.apply(this,a);return d===undefined?d:dec(d);};w.__btTab=true;P.data=w;}
+}
+window.BT_TAB={enc,dec};
 function start(){
   addCss();
   if(!CFG||!CFG.apiKey||/A_REMPLIR/.test(CFG.apiKey)){document.body.appendChild(el(`<div id="bt-login"><div class="box"><h1>Configuration manquante</h1><p>Le fichier config.js ne contient pas encore les paramètres du projet Firebase de BENIN TOURS. Voir le guide d'installation, étape 3.</p></div></div>`));return;}
-  firebase.initializeApp(CFG);auth=firebase.auth();fs=firebase.firestore();
+  firebase.initializeApp(CFG);patchNestedArrays();auth=firebase.auth();fs=firebase.firestore();
   try{fs.settings({ignoreUndefinedProperties:true,merge:true});}catch(e){}
   auth.onAuthStateChanged(async u=>{if(u){try{const p=await fs.collection("profils").doc(u.uid).get();if(p.exists)profilsCache[u.uid]=p.data().nom||"";}catch(e){}afterLogin(u);}else loginScreen();});
 }
